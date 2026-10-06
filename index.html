@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cámara Georeferenciada</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Asegura que el video cubra toda la pantalla sin márgenes */
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #000; }
+        #video-container { position: relative; width: 100%; height: 100%; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+    </style>
+</head>
+<body class="text-white font-sans relative">
+
+    <div id="video-container">
+        <!-- Stream de la cámara -->
+        <video id="camera" autoplay playsinline></video>
+
+        <!-- Recuadro superior con Logos y Georeferencia -->
+        <div class="absolute top-4 left-4 right-4 bg-black bg-opacity-60 backdrop-blur-sm p-4 rounded-xl shadow-lg border border-gray-700">
+            
+            <!-- Contenedor de los Iconos/Logos -->
+            <div class="flex justify-between items-center mb-3 border-b border-gray-600 pb-2">
+                <!-- LOGO ZALDÍVAR -->
+                <!-- Reemplaza el src con el URL de tu Drive para logo-zaldivar.png -->
+                <img src=https://drive.google.com/file/d/1TfEAOxo0hM2beizmHP9MBb6p0Crjg2fB/view?usp=sharing" class="h-10 object-contain">
+                
+                <!-- LOGO FUNDACIÓN CHILE -->
+                <!-- Reemplaza el src con el URL de tu Drive para logo-vector-fundacion-chile.webp -->
+                <img src="https://drive.google.com/file/d/1LdKDKcAgCrJYwWdHhVHfbU8bNJ0COXtG/view?usp=sharing" alt="Logo Fundación Chile" class="h-10 object-contain">
+            </div>
+
+            <!-- Datos GPS y Fecha -->
+            <div id="gps-data" class="text-xs font-mono flex flex-col gap-1 text-green-400">
+                <span>Obteniendo coordenadas GPS...</span>
+            </div>
+        </div>
+
+        <!-- Botón de Captura -->
+        <div class="absolute bottom-10 left-0 right-0 flex justify-center items-center">
+            <button id="capture-btn" class="bg-white rounded-full w-16 h-16 border-4 border-gray-400 focus:outline-none active:bg-gray-300 shadow-xl transition-all"></button>
+        </div>
+    </div>
+
+    <!-- Canvas oculto para procesar la foto -->
+    <canvas id="canvas" class="hidden"></canvas>
+
+    <script>
+        const video = document.getElementById('camera');
+        const gpsDataElement = document.getElementById('gps-data');
+        const captureBtn = document.getElementById('capture-btn');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let currentLat = 'N/A';
+        let currentLng = 'N/A';
+        let currentAlt = 'N/A';
+
+        // Inicializar la cámara trasera
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } // Prioriza la cámara trasera
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Error al acceder a la cámara: ", err);
+                gpsDataElement.innerHTML = `<span class="text-red-400">Error de cámara: Permisos denegados o cámara no disponible.</span>`;
+            }
+        }
+
+        // Obtener ubicación GPS en tiempo real
+        function initGPS() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.watchPosition(
+                    (position) => {
+                        currentLat = position.coords.latitude.toFixed(6);
+                        currentLng = position.coords.longitude.toFixed(6);
+                        currentAlt = position.coords.altitude ? position.coords.altitude.toFixed(1) + 'm' : 'N/A';
+                        
+                        const date = new Date().toLocaleString('es-CL');
+
+                        gpsDataElement.innerHTML = `
+                            <span>LAT: ${currentLat}</span>
+                            <span>LON: ${currentLng}</span>
+                            <span>ALT: ${currentAlt}</span>
+                            <span class="text-white mt-1">FECHA: ${date}</span>
+                        `;
+                    },
+                    (error) => {
+                        gpsDataElement.innerHTML = `<span class="text-yellow-400">Esperando señal GPS... (Verifica permisos)</span>`;
+                    },
+                    { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+                );
+            } else {
+                gpsDataElement.innerHTML = `<span class="text-red-400">Geolocalización no soportada en este navegador.</span>`;
+            }
+        }
+
+        // Función para capturar la foto con los datos incrustados
+        captureBtn.addEventListener('click', () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Dibujar la imagen de la cámara
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Dibujar un recuadro oscuro para los datos en la foto final
+            ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+            ctx.fillRect(20, 20, 450, 160);
+
+            // Incrustar el texto de GPS en la imagen generada
+            ctx.font = "24px monospace";
+            ctx.fillStyle = "#4ade80"; // Verde estilo terminal
+            ctx.fillText(`LAT: ${currentLat}`, 40, 60);
+            ctx.fillText(`LON: ${currentLng}`, 40, 95);
+            ctx.fillText(`ALT: ${currentAlt}`, 40, 130);
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText(`FECHA: ${new Date().toLocaleString('es-CL')}`, 40, 165);
+
+            // Descargar la imagen
+            const dataUrl = canvas.toDataURL('image/jpeg');
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = `captura_geo_${Date.now()}.jpg`;
+            link.click();
+        });
+
+        // Iniciar servicios al cargar
+        initCamera();
+        initGPS();
+    </script>
+</body>
+</html>
