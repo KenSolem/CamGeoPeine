@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cámara Georeferenciada</title>
+    <title>Cámara Georeferenciada Peine</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Asegura que el video cubra toda la pantalla sin márgenes */
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #000; }
         #video-container { position: relative; width: 100%; height: 100%; }
         video { width: 100%; height: 100%; object-fit: cover; }
@@ -18,21 +17,18 @@
         <!-- Stream de la cámara -->
         <video id="camera" autoplay playsinline></video>
 
-        <!-- Recuadro superior con Logos y Georeferencia -->
+        <!-- Recuadro en pantalla (UI) superior -->
         <div class="absolute top-4 left-4 right-4 bg-black bg-opacity-60 backdrop-blur-sm p-4 rounded-xl shadow-lg border border-gray-700">
-            
-            <!-- Contenedor de los Iconos/Logos -->
+            <!-- Logos en pantalla -->
             <div class="flex justify-between items-center mb-3 border-b border-gray-600 pb-2">
-                <!-- LOGO ZALDÍVAR -->
-                <!-- Reemplaza el src con el URL de tu Drive para logo-zaldivar.png -->
-                <img src=https://drive.google.com/uc?export=view&id=1TfEAOxo0hM2beizmHP9MBb6p0Crjg2fB" class="h-10 object-contain">
-                
-                <!-- LOGO FUNDACIÓN CHILE -->
-                <!-- Reemplaza el src con el URL de tu Drive para logo-vector-fundacion-chile.webp -->
-                <img src="https://drive.google.com/uc?export=view&id=1LdKDKcAgCrJYwWdHhVHfbU8bNJ0COXtG" class="h-10 object-contain">
+                <!-- IMPORTANT: Sube estas imágenes a la misma carpeta de GitHub -->
+                <img id="logo-zaldivar" src="logo-zaldivar.png" alt="Logo Zaldívar" class="h-10 object-contain" crossorigin="anonymous">
+                <img id="logo-fch" src="logo-vector-fundacion-chile.webp" alt="Logo Fundación Chile" class="h-10 object-contain" crossorigin="anonymous">
             </div>
+            
+            <div class="text-sm font-bold text-white mb-2">Programa Agropecuario Peine</div>
 
-            <!-- Datos GPS y Fecha -->
+            <!-- Datos GPS -->
             <div id="gps-data" class="text-xs font-mono flex flex-col gap-1 text-green-400">
                 <span>Obteniendo coordenadas GPS...</span>
             </div>
@@ -44,7 +40,7 @@
         </div>
     </div>
 
-    <!-- Canvas oculto para procesar la foto -->
+    <!-- Canvas oculto -->
     <canvas id="canvas" class="hidden"></canvas>
 
     <script>
@@ -58,20 +54,24 @@
         let currentLng = 'N/A';
         let currentAlt = 'N/A';
 
-        // Inicializar la cámara trasera
+        // Inicializar la cámara solicitando alta resolución (1080p mínimo)
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment' } // Prioriza la cámara trasera
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1920 }, // Fuerza a buscar 1080p o superior
+                        height: { ideal: 1080 } 
+                    } 
                 });
                 video.srcObject = stream;
             } catch (err) {
-                console.error("Error al acceder a la cámara: ", err);
-                gpsDataElement.innerHTML = `<span class="text-red-400">Error de cámara: Permisos denegados o cámara no disponible.</span>`;
+                console.error("Error de cámara: ", err);
+                gpsDataElement.innerHTML = `<span class="text-red-400">Error de cámara o permisos.</span>`;
             }
         }
 
-        // Obtener ubicación GPS en tiempo real
+        // Obtener ubicación GPS
         function initGPS() {
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(
@@ -90,45 +90,84 @@
                         `;
                     },
                     (error) => {
-                        gpsDataElement.innerHTML = `<span class="text-yellow-400">Esperando señal GPS... (Verifica permisos)</span>`;
+                        gpsDataElement.innerHTML = `<span class="text-yellow-400">Buscando GPS...</span>`;
                     },
                     { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
                 );
-            } else {
-                gpsDataElement.innerHTML = `<span class="text-red-400">Geolocalización no soportada en este navegador.</span>`;
             }
         }
 
-        // Función para capturar la foto con los datos incrustados
+        // Capturar foto y estampar datos en la esquina inferior derecha
         captureBtn.addEventListener('click', () => {
+            // Ajustar canvas a la resolución real del video (Ej: 1920x1080 o 1080x1920)
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             
-            // Dibujar la imagen de la cámara
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Dibujar un recuadro oscuro para los datos en la foto final
-            ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-            ctx.fillRect(20, 20, 450, 160);
+            // Configuraciones del recuadro
+            const margin = 40;
+            const boxWidth = 550;
+            const boxHeight = 300;
+            // Coordenadas para la esquina inferior derecha
+            const boxX = canvas.width - boxWidth - margin;
+            const boxY = canvas.height - boxHeight - margin;
 
-            // Incrustar el texto de GPS en la imagen generada
-            ctx.font = "24px monospace";
-            ctx.fillStyle = "#4ade80"; // Verde estilo terminal
-            ctx.fillText(`LAT: ${currentLat}`, 40, 60);
-            ctx.fillText(`LON: ${currentLng}`, 40, 95);
-            ctx.fillText(`ALT: ${currentAlt}`, 40, 130);
+            // Dibujar fondo oscuro semitransparente
+            ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+            ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+
+            // Título "Programa Agropecuario Peine"
+            ctx.font = "bold 28px sans-serif";
             ctx.fillStyle = "#ffffff";
-            ctx.fillText(`FECHA: ${new Date().toLocaleString('es-CL')}`, 40, 165);
+            ctx.fillText("Programa Agropecuario Peine", boxX + 30, boxY + 50);
+
+            // Coordenadas GPS
+            ctx.font = "bold 24px monospace";
+            ctx.fillStyle = "#4ade80"; // Verde
+            ctx.fillText(`LAT: ${currentLat}`, boxX + 30, boxY + 100);
+            ctx.fillText(`LON: ${currentLng}`, boxX + 30, boxY + 135);
+            ctx.fillText(`ALT: ${currentAlt}`, boxX + 30, boxY + 170);
+            
+            // Fecha y hora
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText(`FECHA: ${new Date().toLocaleString('es-CL')}`, boxX + 30, boxY + 205);
+
+            // Dibujar logos
+            const logoZaldivar = document.getElementById('logo-zaldivar');
+            const logoFch = document.getElementById('logo-fch');
+
+            // Función para dibujar logos manteniendo su proporción
+            function drawLogo(img, x, y, targetHeight) {
+                if (img.complete && img.naturalHeight !== 0) {
+                    const ratio = img.naturalWidth / img.naturalHeight;
+                    const targetWidth = targetHeight * ratio;
+                    ctx.drawImage(img, x, y, targetWidth, targetHeight);
+                    return targetWidth; // Devuelve el ancho para posicionar el siguiente logo
+                }
+                return 0;
+            }
+
+            const logoHeight = 50; // Alto de los logos en el canvas
+            const logoYPosition = boxY + 230; // Posición Y dentro del recuadro
+            
+            // Dibuja el primer logo y calcula su ancho para poner el segundo al lado
+            const widthZaldivar = drawLogo(logoZaldivar, boxX + 30, logoYPosition, logoHeight);
+            drawLogo(logoFch, boxX + 30 + widthZaldivar + 25, logoYPosition, logoHeight);
 
             // Descargar la imagen
-            const dataUrl = canvas.toDataURL('image/jpeg');
-            const link = document.createElement('a');
-            link.href = dataUrl;
-            link.download = `captura_geo_${Date.now()}.jpg`;
-            link.click();
+            try {
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                const link = document.createElement('a');
+                link.href = dataUrl;
+                link.download = `Peine_Geo_${Date.now()}.jpg`;
+                link.click();
+            } catch (e) {
+                alert("Error al guardar la imagen. Asegúrate de que los logos estén en tu GitHub y no en Google Drive.");
+                console.error(e);
+            }
         });
 
-        // Iniciar servicios al cargar
         initCamera();
         initGPS();
     </script>
