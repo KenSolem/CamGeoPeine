@@ -13,6 +13,16 @@ Su función principal es capturar fotografías utilizando la cámara del disposi
 * **Marca de Agua Inteligente:** Genera un recuadro semitransparente en la esquina inferior derecha de la fotografía con todos los datos espaciales y logotipos. El recuadro es dinámico y escala proporcionalmente según la resolución de la cámara.
 * **100% Web y Responsivo:** No requiere descargar ni instalar aplicaciones (APK). Funciona directamente en navegadores móviles estándar (Chrome, Safari, etc.).
 
+## ⚙️️ Requisitos de Funcionamiento (Permisos)
+
+Para que esta herramienta funcione adecuadamente, es **estrictamente necesario** que el usuario otorgue al navegador web de su teléfono (Chrome, Safari, etc.) los siguientes permisos cuando el sistema los solicite:
+
+1. **Cámara:** Para acceder al lente del dispositivo y capturar la imagen.
+2. **Ubicación (GPS):** Para obtener las coordenadas geográficas exactas en tiempo real.
+3. **Almacenamiento:** Para permitir la descarga y guardado automático de la fotografía generada en la galería o archivos del teléfono.
+
+*⚠️ Si se deniega alguno de estos permisos, la aplicación no podrá acceder al hardware del teléfono y no funcionará correctamente.*
+
 ## 🔒 Privacidad y Protección de Datos
 
 Esta aplicación ha sido diseñada respetando al máximo la privacidad del usuario:
