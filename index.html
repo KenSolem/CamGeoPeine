@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Cámara Georeferenciada Peine</title>
-    <!-- Librería para estilos -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Librería para conversión de coordenadas a UTM -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.2/proj4.js"></script>
     
     <style>
@@ -18,12 +16,10 @@
 <body class="text-white font-sans relative">
 
     <div id="video-container">
-        <!-- Stream de la cámara -->
         <video id="camera" autoplay playsinline></video>
 
-        <!-- Recuadro en pantalla (UI) superior -->
+        <!-- UI Superior -->
         <div class="absolute top-4 left-4 right-4 bg-black bg-opacity-60 backdrop-blur-sm p-4 rounded-xl shadow-lg border border-gray-700">
-            <!-- Logos en pantalla -->
             <div class="flex justify-between items-center mb-3 border-b border-gray-600 pb-2">
                 <img id="logo-zaldivar" src="logo-zaldivar.png" alt="Logo Zaldívar" class="h-10 object-contain" crossorigin="anonymous">
                 <img id="logo-fch" src="logo-vector-fundacion-chile.webp" alt="Logo Fundación Chile" class="h-10 object-contain" crossorigin="anonymous">
@@ -31,15 +27,19 @@
             
             <div class="text-sm font-bold text-white mb-2">Programa Agropecuario Peine</div>
 
-            <!-- Datos GPS -->
             <div id="gps-data" class="text-xs font-mono flex flex-col gap-1 text-green-400">
                 <span>Obteniendo coordenadas UTM...</span>
             </div>
         </div>
 
-        <!-- Botón de Captura -->
-        <div class="absolute bottom-10 left-0 right-0 flex justify-center items-center">
-            <button id="capture-btn" class="bg-white rounded-full w-16 h-16 border-4 border-gray-400 focus:outline-none active:bg-gray-300 shadow-xl transition-all"></button>
+        <!-- Botones de Captura (Normal y HD) -->
+        <div class="absolute bottom-10 left-0 right-0 flex justify-center items-center gap-4 px-4">
+            <button id="capture-normal-btn" class="bg-gray-200 text-gray-800 font-bold py-3 px-4 rounded-full border-4 border-gray-400 focus:outline-none active:bg-gray-400 shadow-xl transition-all text-sm w-1/2">
+                Captura Normal
+            </button>
+            <button id="capture-hd-btn" class="bg-blue-600 text-white font-bold py-3 px-4 rounded-full border-4 border-blue-400 focus:outline-none active:bg-blue-800 shadow-xl transition-all text-sm w-1/2">
+                📷 Captura HD
+            </button>
         </div>
     </div>
 
@@ -49,17 +49,17 @@
     <script>
         const video = document.getElementById('camera');
         const gpsDataElement = document.getElementById('gps-data');
-        const captureBtn = document.getElementById('capture-btn');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        // Variables globales para UTM
         let currentZone = 'N/A';
         let currentEasting = 'N/A';
         let currentNorthing = 'N/A';
         let currentAlt = 'N/A';
+        
+        let imageCapture; // Variable para el capturador HD
 
-        // Inicializar la cámara solicitando alta resolución (1080p mínimo)
+        // Inicializar cámara
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -70,13 +70,19 @@
                     } 
                 });
                 video.srcObject = stream;
+                
+                // Preparar el módulo HD si el navegador lo soporta
+                const track = stream.getVideoTracks()[0];
+                if ('ImageCapture' in window) {
+                    imageCapture = new ImageCapture(track);
+                }
             } catch (err) {
                 console.error("Error de cámara: ", err);
                 gpsDataElement.innerHTML = `<span class="text-red-400">Error de cámara o permisos.</span>`;
             }
         }
 
-        // Obtener ubicación GPS y convertir a UTM
+        // Obtener GPS a UTM
         function initGPS() {
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(
@@ -85,24 +91,18 @@
                         const lng = position.coords.longitude;
                         currentAlt = position.coords.altitude ? position.coords.altitude.toFixed(1) + 'm' : 'N/A';
                         
-                        // Calcular la zona UTM automáticamente según la longitud
                         const utmZone = Math.floor((lng + 180) / 6) + 1;
                         const isSouth = lat < 0;
                         currentZone = `${utmZone} ${isSouth ? 'S' : 'N'}`;
 
-                        // Definir el sistema de coordenadas UTM para proj4
                         const utmProj = `+proj=utm +zone=${utmZone} ${isSouth ? '+south ' : ''}+datum=WGS84 +units=m +no_defs`;
-                        
-                        // Realizar la conversión matemática de EPSG:4326 (Lat/Lon) a UTM
                         const utmCoords = proj4('EPSG:4326', utmProj, [lng, lat]);
                         
-                        // Guardar con 2 decimales
                         currentEasting = utmCoords[0].toFixed(2);
                         currentNorthing = utmCoords[1].toFixed(2);
 
                         const date = new Date().toLocaleString('es-CL');
 
-                        // Mostrar en la interfaz web
                         gpsDataElement.innerHTML = `
                             <span>ZONA:  ${currentZone}</span>
                             <span>ESTE:  ${currentEasting} m</span>
@@ -119,71 +119,106 @@
             }
         }
 
-        // Capturar foto y estampar datos en la esquina inferior derecha
-        captureBtn.addEventListener('click', () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // Función Maestra para procesar, estampar y descargar
+        async function processAndSaveImage(imageSource, isHD) {
+            if (isHD && imageSource instanceof Blob) {
+                // Si es HD, cargamos el archivo crudo del sensor
+                const img = new Image();
+                img.src = URL.createObjectURL(imageSource);
+                await new Promise(res => img.onload = res);
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            } else {
+                // Si es normal, capturamos el video de la pantalla
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            }
 
-            // Configuraciones del recuadro (ajustado en altura para los datos UTM)
-            const margin = 40;
-            const boxWidth = 550;
-            const boxHeight = 330; 
+            // --- AUTO ESCALADO DEL RECUADRO ---
+            // Se calcula un factor de escala basado en el ancho de la foto real vs un estándar (1080px)
+            const scale = Math.max(canvas.width, canvas.height) / 1920; 
+
+            const margin = 40 * scale;
+            const boxWidth = 550 * scale;
+            const boxHeight = 330 * scale; 
             const boxX = canvas.width - boxWidth - margin;
             const boxY = canvas.height - boxHeight - margin;
 
-            // Dibujar fondo oscuro semitransparente
+            // Fondo negro transparente
             ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
             ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
 
-            // Título "Programa Agropecuario Peine"
-            ctx.font = "bold 28px sans-serif";
+            // Título
+            ctx.font = `bold ${28 * scale}px sans-serif`;
             ctx.fillStyle = "#ffffff";
-            ctx.fillText("Programa Agropecuario Peine", boxX + 30, boxY + 50);
+            ctx.fillText("Programa Agropecuario Peine", boxX + (30 * scale), boxY + (50 * scale));
 
-            // Coordenadas UTM
-            ctx.font = "bold 24px monospace";
-            ctx.fillStyle = "#4ade80"; // Verde
-            ctx.fillText(`ZONA:  ${currentZone}`, boxX + 30, boxY + 95);
-            ctx.fillText(`ESTE:  ${currentEasting} m`, boxX + 30, boxY + 130);
-            ctx.fillText(`NORTE: ${currentNorthing} m`, boxX + 30, boxY + 165);
-            ctx.fillText(`ALT:   ${currentAlt}`, boxX + 30, boxY + 200);
+            // Datos UTM
+            ctx.font = `bold ${24 * scale}px monospace`;
+            ctx.fillStyle = "#4ade80"; 
+            ctx.fillText(`ZONA:  ${currentZone}`, boxX + (30 * scale), boxY + (95 * scale));
+            ctx.fillText(`ESTE:  ${currentEasting} m`, boxX + (30 * scale), boxY + (130 * scale));
+            ctx.fillText(`NORTE: ${currentNorthing} m`, boxX + (30 * scale), boxY + (165 * scale));
+            ctx.fillText(`ALT:   ${currentAlt}`, boxX + (30 * scale), boxY + (200 * scale));
             
             // Fecha y hora
             ctx.fillStyle = "#ffffff";
-            ctx.fillText(`FECHA: ${new Date().toLocaleString('es-CL')}`, boxX + 30, boxY + 235);
+            ctx.fillText(`FECHA: ${new Date().toLocaleString('es-CL')}`, boxX + (30 * scale), boxY + (235 * scale));
 
-            // Dibujar logos
+            // Logos con tamaño dinámico
             const logoZaldivar = document.getElementById('logo-zaldivar');
             const logoFch = document.getElementById('logo-fch');
+            const logoHeight = 50 * scale; 
+            const logoYPosition = boxY + (260 * scale); 
+            
+            let currentX = boxX + (30 * scale);
 
-            function drawLogo(img, x, y, targetHeight) {
-                if (img.complete && img.naturalHeight !== 0) {
-                    const ratio = img.naturalWidth / img.naturalHeight;
-                    const targetWidth = targetHeight * ratio;
-                    ctx.drawImage(img, x, y, targetWidth, targetHeight);
-                    return targetWidth;
-                }
-                return 0;
+            if (logoZaldivar.complete && logoZaldivar.naturalHeight !== 0) {
+                const ratio = logoZaldivar.naturalWidth / logoZaldivar.naturalHeight;
+                const targetWidth = logoHeight * ratio;
+                ctx.drawImage(logoZaldivar, currentX, logoYPosition, targetWidth, logoHeight);
+                currentX += targetWidth + (25 * scale);
+            }
+            if (logoFch.complete && logoFch.naturalHeight !== 0) {
+                const ratio = logoFch.naturalWidth / logoFch.naturalHeight;
+                const targetWidth = logoHeight * ratio;
+                ctx.drawImage(logoFch, currentX, logoYPosition, targetWidth, logoHeight);
             }
 
-            const logoHeight = 50; 
-            const logoYPosition = boxY + 260; 
-            
-            const widthZaldivar = drawLogo(logoZaldivar, boxX + 30, logoYPosition, logoHeight);
-            drawLogo(logoFch, boxX + 30 + widthZaldivar + 25, logoYPosition, logoHeight);
-
-            // Descargar la imagen
+            // Descargar imagen (con mayor calidad JPEG para HD)
             try {
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                const dataUrl = canvas.toDataURL('image/jpeg', isHD ? 1.0 : 0.85);
                 const link = document.createElement('a');
                 link.href = dataUrl;
-                link.download = `Peine_Geo_${Date.now()}.jpg`;
+                link.download = `Peine_Geo_${isHD ? 'HD_' : ''}${Date.now()}.jpg`;
                 link.click();
             } catch (e) {
-                alert("Error al guardar la imagen. Asegúrate de que los logos estén en tu GitHub.");
+                alert("Error al guardar la imagen. Revisa los permisos.");
                 console.error(e);
+            }
+        }
+
+        // Botón Captura Normal
+        document.getElementById('capture-normal-btn').addEventListener('click', () => {
+            processAndSaveImage(video, false);
+        });
+
+        // Botón Captura HD
+        document.getElementById('capture-hd-btn').addEventListener('click', async () => {
+            if (imageCapture) {
+                try {
+                    const blob = await imageCapture.takePhoto();
+                    await processAndSaveImage(blob, true);
+                } catch (e) {
+                    console.error("Fallo al tomar foto HD: ", e);
+                    alert("Tu celular no permitió la captura HD, usando captura normal.");
+                    processAndSaveImage(video, false);
+                }
+            } else {
+                alert("Tu navegador (ej. Safari antiguo) no soporta Captura HD nativa. Usando calidad normal.");
+                processAndSaveImage(video, false);
             }
         });
 
