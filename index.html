@@ -4,7 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Cámara Georeferenciada Peine</title>
+    <!-- Librería para estilos -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Librería para conversión de coordenadas a UTM -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.2/proj4.js"></script>
+    
     <style>
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #000; }
         #video-container { position: relative; width: 100%; height: 100%; }
@@ -21,7 +25,6 @@
         <div class="absolute top-4 left-4 right-4 bg-black bg-opacity-60 backdrop-blur-sm p-4 rounded-xl shadow-lg border border-gray-700">
             <!-- Logos en pantalla -->
             <div class="flex justify-between items-center mb-3 border-b border-gray-600 pb-2">
-                <!-- IMPORTANT: Sube estas imágenes a la misma carpeta de GitHub -->
                 <img id="logo-zaldivar" src="logo-zaldivar.png" alt="Logo Zaldívar" class="h-10 object-contain" crossorigin="anonymous">
                 <img id="logo-fch" src="logo-vector-fundacion-chile.webp" alt="Logo Fundación Chile" class="h-10 object-contain" crossorigin="anonymous">
             </div>
@@ -30,7 +33,7 @@
 
             <!-- Datos GPS -->
             <div id="gps-data" class="text-xs font-mono flex flex-col gap-1 text-green-400">
-                <span>Obteniendo coordenadas GPS...</span>
+                <span>Obteniendo coordenadas UTM...</span>
             </div>
         </div>
 
@@ -50,8 +53,10 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        let currentLat = 'N/A';
-        let currentLng = 'N/A';
+        // Variables globales para UTM
+        let currentZone = 'N/A';
+        let currentEasting = 'N/A';
+        let currentNorthing = 'N/A';
         let currentAlt = 'N/A';
 
         // Inicializar la cámara solicitando alta resolución (1080p mínimo)
@@ -60,7 +65,7 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
                         facingMode: 'environment',
-                        width: { ideal: 1920 }, // Fuerza a buscar 1080p o superior
+                        width: { ideal: 1920 },
                         height: { ideal: 1080 } 
                     } 
                 });
@@ -71,21 +76,38 @@
             }
         }
 
-        // Obtener ubicación GPS
+        // Obtener ubicación GPS y convertir a UTM
         function initGPS() {
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(
                     (position) => {
-                        currentLat = position.coords.latitude.toFixed(6);
-                        currentLng = position.coords.longitude.toFixed(6);
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
                         currentAlt = position.coords.altitude ? position.coords.altitude.toFixed(1) + 'm' : 'N/A';
                         
+                        // Calcular la zona UTM automáticamente según la longitud
+                        const utmZone = Math.floor((lng + 180) / 6) + 1;
+                        const isSouth = lat < 0;
+                        currentZone = `${utmZone} ${isSouth ? 'S' : 'N'}`;
+
+                        // Definir el sistema de coordenadas UTM para proj4
+                        const utmProj = `+proj=utm +zone=${utmZone} ${isSouth ? '+south ' : ''}+datum=WGS84 +units=m +no_defs`;
+                        
+                        // Realizar la conversión matemática de EPSG:4326 (Lat/Lon) a UTM
+                        const utmCoords = proj4('EPSG:4326', utmProj, [lng, lat]);
+                        
+                        // Guardar con 2 decimales
+                        currentEasting = utmCoords[0].toFixed(2);
+                        currentNorthing = utmCoords[1].toFixed(2);
+
                         const date = new Date().toLocaleString('es-CL');
 
+                        // Mostrar en la interfaz web
                         gpsDataElement.innerHTML = `
-                            <span>LAT: ${currentLat}</span>
-                            <span>LON: ${currentLng}</span>
-                            <span>ALT: ${currentAlt}</span>
+                            <span>ZONA:  ${currentZone}</span>
+                            <span>ESTE:  ${currentEasting} m</span>
+                            <span>NORTE: ${currentNorthing} m</span>
+                            <span>ALT:   ${currentAlt}</span>
                             <span class="text-white mt-1">FECHA: ${date}</span>
                         `;
                     },
@@ -99,17 +121,15 @@
 
         // Capturar foto y estampar datos en la esquina inferior derecha
         captureBtn.addEventListener('click', () => {
-            // Ajustar canvas a la resolución real del video (Ej: 1920x1080 o 1080x1920)
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Configuraciones del recuadro
+            // Configuraciones del recuadro (ajustado en altura para los datos UTM)
             const margin = 40;
             const boxWidth = 550;
-            const boxHeight = 300;
-            // Coordenadas para la esquina inferior derecha
+            const boxHeight = 330; 
             const boxX = canvas.width - boxWidth - margin;
             const boxY = canvas.height - boxHeight - margin;
 
@@ -122,36 +142,35 @@
             ctx.fillStyle = "#ffffff";
             ctx.fillText("Programa Agropecuario Peine", boxX + 30, boxY + 50);
 
-            // Coordenadas GPS
+            // Coordenadas UTM
             ctx.font = "bold 24px monospace";
             ctx.fillStyle = "#4ade80"; // Verde
-            ctx.fillText(`LAT: ${currentLat}`, boxX + 30, boxY + 100);
-            ctx.fillText(`LON: ${currentLng}`, boxX + 30, boxY + 135);
-            ctx.fillText(`ALT: ${currentAlt}`, boxX + 30, boxY + 170);
+            ctx.fillText(`ZONA:  ${currentZone}`, boxX + 30, boxY + 95);
+            ctx.fillText(`ESTE:  ${currentEasting} m`, boxX + 30, boxY + 130);
+            ctx.fillText(`NORTE: ${currentNorthing} m`, boxX + 30, boxY + 165);
+            ctx.fillText(`ALT:   ${currentAlt}`, boxX + 30, boxY + 200);
             
             // Fecha y hora
             ctx.fillStyle = "#ffffff";
-            ctx.fillText(`FECHA: ${new Date().toLocaleString('es-CL')}`, boxX + 30, boxY + 205);
+            ctx.fillText(`FECHA: ${new Date().toLocaleString('es-CL')}`, boxX + 30, boxY + 235);
 
             // Dibujar logos
             const logoZaldivar = document.getElementById('logo-zaldivar');
             const logoFch = document.getElementById('logo-fch');
 
-            // Función para dibujar logos manteniendo su proporción
             function drawLogo(img, x, y, targetHeight) {
                 if (img.complete && img.naturalHeight !== 0) {
                     const ratio = img.naturalWidth / img.naturalHeight;
                     const targetWidth = targetHeight * ratio;
                     ctx.drawImage(img, x, y, targetWidth, targetHeight);
-                    return targetWidth; // Devuelve el ancho para posicionar el siguiente logo
+                    return targetWidth;
                 }
                 return 0;
             }
 
-            const logoHeight = 50; // Alto de los logos en el canvas
-            const logoYPosition = boxY + 230; // Posición Y dentro del recuadro
+            const logoHeight = 50; 
+            const logoYPosition = boxY + 260; 
             
-            // Dibuja el primer logo y calcula su ancho para poner el segundo al lado
             const widthZaldivar = drawLogo(logoZaldivar, boxX + 30, logoYPosition, logoHeight);
             drawLogo(logoFch, boxX + 30 + widthZaldivar + 25, logoYPosition, logoHeight);
 
@@ -163,7 +182,7 @@
                 link.download = `Peine_Geo_${Date.now()}.jpg`;
                 link.click();
             } catch (e) {
-                alert("Error al guardar la imagen. Asegúrate de que los logos estén en tu GitHub y no en Google Drive.");
+                alert("Error al guardar la imagen. Asegúrate de que los logos estén en tu GitHub.");
                 console.error(e);
             }
         });
